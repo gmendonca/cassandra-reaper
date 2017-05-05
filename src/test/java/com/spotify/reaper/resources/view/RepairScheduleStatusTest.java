@@ -28,6 +28,7 @@ public class RepairScheduleStatusTest {
     data.setDaysBetween(2);
     data.setId(1);
     data.setIntensity(0.75);
+    data.setIncrementalRepair(false);
     data.setKeyspaceName("testKeyspace");
     data.setOwner("testuser");
     data.setRepairParallelism(RepairParallelism.PARALLEL);
