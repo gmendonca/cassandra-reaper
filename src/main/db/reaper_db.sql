@@ -24,10 +24,11 @@ CREATE TABLE IF NOT EXISTS "cluster" (
 -- Cassandra supports repairing multiple column families in one go.
 --
 CREATE TABLE IF NOT EXISTS "repair_unit" (
-  "id"              SERIAL PRIMARY KEY,
-  "cluster_name"    TEXT    NOT NULL REFERENCES "cluster" ("name"),
-  "keyspace_name"   TEXT    NOT NULL,
-  "column_families" TEXT [] NOT NULL
+  "id"                  SERIAL PRIMARY KEY,
+  "cluster_name"        TEXT        NOT NULL REFERENCES "cluster" ("name"),
+  "keyspace_name"       TEXT        NOT NULL,
+  "column_families"     TEXT []     NOT NULL,
+  "incremental_repair"  BOOLEAN     NOT NULL
 );
 
 -- Using GIN index to make @> (contains) type of array operations faster

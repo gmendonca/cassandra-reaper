@@ -444,7 +444,7 @@ public class MemoryStorage implements IStorage {
             segmentsRepaired, totalSegments, run.getRunState(), run.getStartTime(),
             run.getEndTime(), run.getCause(), run.getOwner(), run.getLastEvent(),
             run.getCreationTime(), run.getPauseTime(), run.getIntensity(),
-            run.getRepairParallelism()));
+            unit.getIncrementalRepair(), run.getRepairParallelism()));
       }
       return runStatuses;
     }

@@ -68,6 +68,9 @@ public class RepairRunStatus {
   @JsonProperty
   private double intensity;
 
+  @JsonProperty("incremental_repair")
+  private boolean incrementalRepair;
+
   @JsonProperty("total_segments")
   private int totalSegments;
 
@@ -93,10 +96,10 @@ public class RepairRunStatus {
   }
 
   public RepairRunStatus(long runId, String clusterName, String keyspaceName,
-      Collection<String> columnFamilies, int segmentsRepaired, int totalSegments,
-      RepairRun.RunState state, DateTime startTime, DateTime endTime, String cause, String owner,
-      String lastEvent, DateTime creationTime, DateTime pauseTime, double intensity,
-      RepairParallelism repairParallelism) {
+                         Collection<String> columnFamilies, int segmentsRepaired, int totalSegments,
+                         RepairRun.RunState state, DateTime startTime, DateTime endTime, String cause, String owner,
+                         String lastEvent, DateTime creationTime, DateTime pauseTime, double intensity,
+                         boolean incrementalRepair, RepairParallelism repairParallelism) {
     this.id = runId;
     this.cause = cause;
     this.owner = owner;
@@ -109,6 +112,7 @@ public class RepairRunStatus {
     this.endTime = endTime;
     this.pauseTime = pauseTime;
     this.intensity = CommonTools.roundDoubleNicely(intensity);
+    this.incrementalRepair = incrementalRepair;
     this.totalSegments = totalSegments;
     this.repairParallelism = repairParallelism;
     this.segmentsRepaired = segmentsRepaired;
@@ -118,15 +122,15 @@ public class RepairRunStatus {
       duration = null;
     } else {
       duration = DurationFormatUtils.formatDurationWords(
-          new Duration(startTime.toInstant(), endTime.toInstant()).getMillis(),
-          true, false);
+              new Duration(startTime.toInstant(), endTime.toInstant()).getMillis(),
+              true, false);
     }
 
     if (startTime == null || endTime != null) {
       estimatedTimeOfArrival = null;
     } else {
       if (state == RepairRun.RunState.ERROR || state == RepairRun.RunState.DELETED ||
-          state == RepairRun.RunState.ABORTED ) {
+              state == RepairRun.RunState.ABORTED ) {
         estimatedTimeOfArrival = null;
       } else if (segmentsRepaired == 0) {
         estimatedTimeOfArrival = null;
@@ -143,22 +147,23 @@ public class RepairRunStatus {
 
   public RepairRunStatus(RepairRun repairRun, RepairUnit repairUnit, int segmentsRepaired) {
     this(
-        repairRun.getId(),
-        repairRun.getClusterName(),
-        repairUnit.getKeyspaceName(),
-        repairUnit.getColumnFamilies(),
-        segmentsRepaired,
-        repairRun.getSegmentCount(),
-        repairRun.getRunState(),
-        repairRun.getStartTime(),
-        repairRun.getEndTime(),
-        repairRun.getCause(),
-        repairRun.getOwner(),
-        repairRun.getLastEvent(),
-        repairRun.getCreationTime(),
-        repairRun.getPauseTime(),
-        repairRun.getIntensity(),
-        repairRun.getRepairParallelism()
+            repairRun.getId(),
+            repairRun.getClusterName(),
+            repairUnit.getKeyspaceName(),
+            repairUnit.getColumnFamilies(),
+            segmentsRepaired,
+            repairRun.getSegmentCount(),
+            repairRun.getRunState(),
+            repairRun.getStartTime(),
+            repairRun.getEndTime(),
+            repairRun.getCause(),
+            repairRun.getOwner(),
+            repairRun.getLastEvent(),
+            repairRun.getCreationTime(),
+            repairRun.getPauseTime(),
+            repairRun.getIntensity(),
+            repairUnit.getIncrementalRepair(),
+            repairRun.getRepairParallelism()
     );
   }
 
@@ -304,6 +309,15 @@ public class RepairRunStatus {
 
   public void setIntensity(double intensity) {
     this.intensity = intensity;
+  }
+
+  public boolean getIncrementalRepair() {
+    return incrementalRepair;
+  }
+
+
+  public void setIncrementalRepair(boolean incrementalRepair) {
+    this.incrementalRepair = incrementalRepair;
   }
 
   public int getTotalSegments() {

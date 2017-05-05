@@ -77,25 +77,26 @@ public class RepairScheduleResource {
    */
   @POST
   public Response addRepairSchedule(
-      @Context UriInfo uriInfo,
-      @QueryParam("clusterName") Optional<String> clusterName,
-      @QueryParam("keyspace") Optional<String> keyspace,
-      @QueryParam("tables") Optional<String> tableNamesParam,
-      @QueryParam("owner") Optional<String> owner,
-      @QueryParam("segmentCount") Optional<Integer> segmentCount,
-      @QueryParam("repairParallelism") Optional<String> repairParallelism,
-      @QueryParam("intensity") Optional<String> intensityStr,
-      @QueryParam("scheduleDaysBetween") Optional<Integer> scheduleDaysBetween,
-      @QueryParam("scheduleTriggerTime") Optional<String> scheduleTriggerTime
+          @Context UriInfo uriInfo,
+          @QueryParam("clusterName") Optional<String> clusterName,
+          @QueryParam("keyspace") Optional<String> keyspace,
+          @QueryParam("tables") Optional<String> tableNamesParam,
+          @QueryParam("owner") Optional<String> owner,
+          @QueryParam("segmentCount") Optional<Integer> segmentCount,
+          @QueryParam("repairParallelism") Optional<String> repairParallelism,
+          @QueryParam("intensity") Optional<String> intensityStr,
+          @QueryParam("incrementalRepair") Optional<String> incrementalRepairStr,
+          @QueryParam("scheduleDaysBetween") Optional<Integer> scheduleDaysBetween,
+          @QueryParam("scheduleTriggerTime") Optional<String> scheduleTriggerTime
   ) {
     LOG.info("add repair schedule called with: clusterName = {}, keyspace = {}, tables = {}, "
-             + "owner = {}, segmentCount = {}, repairParallelism = {}, "
-             + "intensity = {}, scheduleDaysBetween = {}, scheduleTriggerTime = {}",
-        clusterName, keyspace, tableNamesParam, owner, segmentCount, repairParallelism,
-        intensityStr, scheduleDaysBetween, scheduleTriggerTime);
+                    + "owner = {}, segmentCount = {}, repairParallelism = {}, "
+                    + "intensity = {}, incrementalRepair = {}, scheduleDaysBetween = {}, scheduleTriggerTime = {}",
+            clusterName, keyspace, tableNamesParam, owner, segmentCount, repairParallelism,
+            intensityStr, incrementalRepairStr,scheduleDaysBetween, scheduleTriggerTime);
     try {
       Response possibleFailResponse = RepairRunResource.checkRequestForAddRepair(
-          context, clusterName, keyspace, owner, segmentCount, repairParallelism, intensityStr);
+              context, clusterName, keyspace, owner, segmentCount, repairParallelism, intensityStr, incrementalRepairStr);
       if (null != possibleFailResponse) {
         return possibleFailResponse;
       }
@@ -107,19 +108,19 @@ public class RepairScheduleResource {
         } catch (IllegalArgumentException ex) {
           LOG.info("cannot parse data string: " + scheduleTriggerTime.get());
           return Response.status(Response.Status.BAD_REQUEST).entity(
-              "invalid schedule_trigger_time").build();
+                  "invalid schedule_trigger_time").build();
         }
         LOG.info("first schedule activation will be: "
-                 + CommonTools.dateTimeToISO8601(nextActivation));
+                + CommonTools.dateTimeToISO8601(nextActivation));
       } else {
         nextActivation = DateTime.now().plusDays(1).withTimeAtStartOfDay();
         LOG.info("no schedule_trigger_time given, so setting first scheduling next night: "
-                 + CommonTools.dateTimeToISO8601(nextActivation));
+                + CommonTools.dateTimeToISO8601(nextActivation));
       }
       if (nextActivation.isBeforeNow()) {
         return Response.status(Response.Status.BAD_REQUEST).entity(
-            "given schedule_trigger_time is in the past: "
-            + CommonTools.dateTimeToISO8601(nextActivation)).build();
+                "given schedule_trigger_time is in the past: "
+                        + CommonTools.dateTimeToISO8601(nextActivation)).build();
       }
 
       Double intensity;
@@ -130,17 +131,30 @@ public class RepairScheduleResource {
         LOG.debug("no intensity given, so using default value: " + intensity);
       }
 
+      if(!scheduleDaysBetween.isPresent()) {
+        return Response.status(Response.Status.BAD_REQUEST).entity(
+                "missing required parameter: scheduleDaysBetween").build();
+      }
+
+      Boolean incrementalRepair;
+      if (incrementalRepairStr.isPresent()) {
+        incrementalRepair = Boolean.parseBoolean(incrementalRepairStr.get());
+      } else {
+        incrementalRepair = context.config.getIncrementalRepair();
+        LOG.debug("no incremental repair given, so using default value: " + incrementalRepair);
+      }
+
       int segments = context.config.getSegmentCount();
       if (segmentCount.isPresent()) {
         LOG.debug("using given segment count {} instead of configured value {}",
-            segmentCount.get(), context.config.getSegmentCount());
+                segmentCount.get(), context.config.getSegmentCount());
         segments = segmentCount.get();
       }
 
       int daysBetween = context.config.getScheduleDaysBetween();
       if (scheduleDaysBetween.isPresent()) {
         LOG.debug("using given schedule days between {} instead of configured value {}",
-            scheduleDaysBetween.get(), context.config.getScheduleDaysBetween());
+                scheduleDaysBetween.get(), context.config.getScheduleDaysBetween());
         daysBetween = scheduleDaysBetween.get();
       }
 
@@ -148,27 +162,39 @@ public class RepairScheduleResource {
       Set<String> tableNames;
       try {
         tableNames = CommonTools.getTableNamesBasedOnParam(context, cluster, keyspace.get(),
-            tableNamesParam);
+                tableNamesParam);
       } catch (IllegalArgumentException ex) {
         return Response.status(Response.Status.NOT_FOUND).entity(ex.getMessage()).build();
       }
 
       RepairUnit theRepairUnit =
-          CommonTools.getNewOrExistingRepairUnit(context, cluster, keyspace.get(), tableNames);
+              CommonTools.getNewOrExistingRepairUnit(context, cluster, keyspace.get(), tableNames, incrementalRepair);
+
+      if(theRepairUnit.getIncrementalRepair() != incrementalRepair) {
+        return Response.status(Response.Status.BAD_REQUEST).entity(
+                "A repair Schedule already exist for the same cluster/keyspace/table but with a different incremental repair value."
+                        + "Requested value: " + incrementalRepair + " | Existing value: " + theRepairUnit.getIncrementalRepair()).build();
+      }
 
       RepairParallelism parallelism = context.config.getRepairParallelism();
       if (repairParallelism.isPresent()) {
         LOG.debug("using given repair parallelism {} instead of configured value {}",
-            repairParallelism.get(), context.config.getRepairParallelism());
+                repairParallelism.get(), context.config.getRepairParallelism());
         parallelism = RepairParallelism.valueOf(repairParallelism.get().toUpperCase());
       }
 
+      if(!parallelism.equals(RepairParallelism.PARALLEL) && incrementalRepair) {
+        return Response.status(Response.Status.BAD_REQUEST).entity(
+                "It is not possible to mix sequential repair and incremental repairs. parallelism "
+                        + parallelism + " : incrementalRepair " + incrementalRepair).build();
+      }
+
       RepairSchedule newRepairSchedule = CommonTools.storeNewRepairSchedule(
-          context, cluster, theRepairUnit, daysBetween, nextActivation, owner.get(),
-          segments, parallelism, intensity);
+              context, cluster, theRepairUnit, daysBetween, nextActivation, owner.get(),
+              segments, parallelism, intensity);
 
       return Response.created(buildRepairScheduleURI(uriInfo, newRepairSchedule))
-          .entity(new RepairScheduleStatus(newRepairSchedule, theRepairUnit)).build();
+              .entity(new RepairScheduleStatus(newRepairSchedule, theRepairUnit)).build();
 
     } catch (ReaperException e) {
       LOG.error(e.getMessage());
@@ -187,30 +213,30 @@ public class RepairScheduleResource {
   @PUT
   @Path("/{id}")
   public Response modifyState(
-      @Context UriInfo uriInfo,
-      @PathParam("id") Long repairScheduleId,
-      @QueryParam("state") Optional<String> state) {
+          @Context UriInfo uriInfo,
+          @PathParam("id") Long repairScheduleId,
+          @QueryParam("state") Optional<String> state) {
 
     LOG.info("modify repair schedule state called with: id = {}, state = {}",
-        repairScheduleId, state);
+            repairScheduleId, state);
 
     if (!state.isPresent()) {
       return Response.status(Response.Status.BAD_REQUEST.getStatusCode())
-          .entity("\"state\" argument missing").build();
+              .entity("\"state\" argument missing").build();
     }
 
     Optional<RepairSchedule> repairSchedule = context.storage.getRepairSchedule(repairScheduleId);
     if (!repairSchedule.isPresent()) {
       return Response.status(Response.Status.NOT_FOUND).entity("repair schedule with id "
-                                                               + repairScheduleId + " not found")
-          .build();
+              + repairScheduleId + " not found")
+              .build();
     }
 
     Optional<RepairUnit> repairUnit =
-        context.storage.getRepairUnit(repairSchedule.get().getRepairUnitId());
+            context.storage.getRepairUnit(repairSchedule.get().getRepairUnitId());
     if (!repairUnit.isPresent()) {
       String errMsg =
-          "repair unit with id " + repairSchedule.get().getRepairUnitId() + " not found";
+              "repair unit with id " + repairSchedule.get().getRepairUnitId() + " not found";
       LOG.error(errMsg);
       return Response.status(Response.Status.NOT_FOUND).entity(errMsg).build();
     }
@@ -220,7 +246,7 @@ public class RepairScheduleResource {
       newState = RepairSchedule.State.valueOf(state.get().toUpperCase());
     } catch (IllegalArgumentException ex) {
       return Response.status(Response.Status.BAD_REQUEST.getStatusCode())
-          .entity("invalid \"state\" argument: " + state.get()).build();
+              .entity("invalid \"state\" argument: " + state.get()).build();
     }
     RepairSchedule.State oldState = repairSchedule.get().getState();
 
@@ -234,7 +260,7 @@ public class RepairScheduleResource {
       return resumeSchedule(repairSchedule.get(), repairUnit.get());
     } else {
       String errMsg = String.format("Transition %s->%s not supported.", oldState.toString(),
-          newState.toString());
+              newState.toString());
       LOG.error(errMsg);
       return Response.status(Response.Status.BAD_REQUEST).entity(errMsg).build();
     }
@@ -272,7 +298,7 @@ public class RepairScheduleResource {
       return Response.ok().entity(getRepairScheduleStatus(repairSchedule.get())).build();
     } else {
       return Response.status(404).entity(
-          "repair schedule with id " + repairScheduleId + " doesn't exist").build();
+              "repair schedule with id " + repairScheduleId + " doesn't exist").build();
     }
   }
 
@@ -285,7 +311,7 @@ public class RepairScheduleResource {
   public Response getRepairSchedulesForCluster(@PathParam("cluster_name") String clusterName) {
     LOG.debug("get repair schedules for cluster called with: cluster_name = {}", clusterName);
     Collection<RepairSchedule> repairSchedules =
-        context.storage.getRepairSchedulesForCluster(clusterName);
+            context.storage.getRepairSchedulesForCluster(clusterName);
     Collection<RepairScheduleStatus> repairScheduleViews = new ArrayList<>();
     for (RepairSchedule repairSchedule : repairSchedules) {
       repairScheduleViews.add(getRepairScheduleStatus(repairSchedule));
@@ -298,9 +324,9 @@ public class RepairScheduleResource {
    */
   private RepairScheduleStatus getRepairScheduleStatus(RepairSchedule repairSchedule) {
     Optional<RepairUnit> repairUnit =
-        context.storage.getRepairUnit(repairSchedule.getRepairUnitId());
+            context.storage.getRepairUnit(repairSchedule.getRepairUnitId());
     assert repairUnit.isPresent() : "no repair unit found with id: "
-                                    + repairSchedule.getRepairUnitId();
+            + repairSchedule.getRepairUnitId();
     return new RepairScheduleStatus(repairSchedule, repairUnit.get());
   }
 
@@ -331,7 +357,7 @@ public class RepairScheduleResource {
    */
   @GET
   public Response listSchedules(@QueryParam("clusterName") Optional<String> clusterName,
-      @QueryParam("keyspace") Optional<String> keyspaceName) {
+                                @QueryParam("keyspace") Optional<String> keyspaceName) {
     List<RepairScheduleStatus> scheduleStatuses = Lists.newArrayList();
     Collection<RepairSchedule> schedules = getScheduleList(clusterName, keyspaceName);
     for (RepairSchedule schedule : schedules) {
@@ -340,7 +366,7 @@ public class RepairScheduleResource {
         scheduleStatuses.add(new RepairScheduleStatus(schedule, unit.get()));
       } else {
         String errMsg = String.format(
-            "Found repair schedule %d with no associated repair unit", schedule.getId());
+                "Found repair schedule %d with no associated repair unit", schedule.getId());
         LOG.error(errMsg);
         return Response.status(Response.Status.INTERNAL_SERVER_ERROR).build();
       }
@@ -349,11 +375,11 @@ public class RepairScheduleResource {
   }
 
   private Collection<RepairSchedule> getScheduleList(Optional<String> clusterName,
-      Optional<String> keyspaceName) {
+                                                     Optional<String> keyspaceName) {
     Collection<RepairSchedule> schedules;
     if (clusterName.isPresent() && keyspaceName.isPresent()) {
       schedules = context.storage.getRepairSchedulesForClusterAndKeyspace(clusterName.get(),
-          keyspaceName.get());
+              keyspaceName.get());
     } else if (clusterName.isPresent()) {
       schedules = context.storage.getRepairSchedulesForCluster(clusterName.get());
     } else if (keyspaceName.isPresent()) {
@@ -376,40 +402,40 @@ public class RepairScheduleResource {
   @DELETE
   @Path("/{id}")
   public Response deleteRepairSchedule(@PathParam("id") Long repairScheduleId,
-      @QueryParam("owner") Optional<String> owner) {
+                                       @QueryParam("owner") Optional<String> owner) {
     LOG.info("delete repair schedule called with repairScheduleId: {}, and owner: {}",
-        repairScheduleId, owner);
+            repairScheduleId, owner);
     if (!owner.isPresent()) {
       return Response.status(Response.Status.BAD_REQUEST).entity(
-          "required query parameter \"owner\" is missing").build();
+              "required query parameter \"owner\" is missing").build();
     }
     Optional<RepairSchedule> scheduleToDelete = context.storage.getRepairSchedule(repairScheduleId);
     if (!scheduleToDelete.isPresent()) {
       return Response.status(Response.Status.NOT_FOUND).entity(
-          "Repair schedule with id \"" + repairScheduleId + "\" not found").build();
+              "Repair schedule with id \"" + repairScheduleId + "\" not found").build();
     }
     if (scheduleToDelete.get().getState() == RepairSchedule.State.ACTIVE) {
       return Response.status(Response.Status.FORBIDDEN).entity(
-          "Repair schedule with id \"" + repairScheduleId
-          + "\" is currently running, and must be stopped before deleting").build();
+              "Repair schedule with id \"" + repairScheduleId
+                      + "\" is currently running, and must be stopped before deleting").build();
     }
     if (!scheduleToDelete.get().getOwner().equalsIgnoreCase(owner.get())) {
       return Response.status(Response.Status.FORBIDDEN).entity(
-          "Repair schedule with id \"" + repairScheduleId
-          + "\" is not owned by the user you defined: " + owner.get()).build();
+              "Repair schedule with id \"" + repairScheduleId
+                      + "\" is not owned by the user you defined: " + owner.get()).build();
     }
     // Need to get the RepairUnit before it's possibly deleted.
     Optional<RepairUnit> possiblyDeletedUnit =
-        context.storage.getRepairUnit(scheduleToDelete.get().getRepairUnitId());
+            context.storage.getRepairUnit(scheduleToDelete.get().getRepairUnitId());
     Optional<RepairSchedule> deletedSchedule =
-        context.storage.deleteRepairSchedule(repairScheduleId);
+            context.storage.deleteRepairSchedule(repairScheduleId);
     if (deletedSchedule.isPresent()) {
       RepairScheduleStatus scheduleStatus = new RepairScheduleStatus(deletedSchedule.get(),
-          possiblyDeletedUnit.get());
+              possiblyDeletedUnit.get());
       return Response.ok().entity(scheduleStatus).build();
     }
     return Response.serverError().entity("delete failed for schedule with id \""
-                                         + repairScheduleId + "\"").build();
+            + repairScheduleId + "\"").build();
   }
 
 }

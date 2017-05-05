@@ -28,8 +28,9 @@ public class RepairUnitMapper implements ResultSetMapper<RepairUnit> {
   public RepairUnit map(int index, ResultSet r, StatementContext ctx) throws SQLException {
     String[] columnFamilies = (String[]) r.getArray("column_families").getArray();
     RepairUnit.Builder builder = new RepairUnit.Builder(r.getString("cluster_name"),
-                                                        r.getString("keyspace_name"),
-                                                        Sets.newHashSet(columnFamilies));
+            r.getString("keyspace_name"),
+            Sets.newHashSet(columnFamilies),
+            r.getBoolean("incremental_repair"));
     return builder.build(r.getLong("id"));
   }
 

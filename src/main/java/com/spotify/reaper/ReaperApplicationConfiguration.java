@@ -47,6 +47,11 @@ public class ReaperApplicationConfiguration extends Configuration {
 
   @JsonProperty
   @NotNull
+  @DefaultValue("false")
+  private Boolean incrementalRepair;
+
+  @JsonProperty
+  @NotNull
   @DefaultValue("7")
   private Integer scheduleDaysBetween;
 
@@ -113,6 +118,14 @@ public class ReaperApplicationConfiguration extends Configuration {
 
   public void setRepairRunThreadCount(int repairRunThreadCount) {
     this.repairRunThreadCount = repairRunThreadCount;
+  }
+
+  public Boolean getIncrementalRepair() {
+    return incrementalRepair;
+  }
+
+  public void setIncrementalRepair(Boolean incrementalRepair) {
+    this.incrementalRepair = incrementalRepair;
   }
 
   public String getStorageType() {

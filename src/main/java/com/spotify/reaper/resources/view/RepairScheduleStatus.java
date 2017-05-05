@@ -57,6 +57,9 @@ public class RepairScheduleStatus {
   @JsonProperty
   private double intensity;
 
+  @JsonProperty("incremental_repair")
+  private boolean incrementalRepair;
+
   @JsonProperty("segment_count")
   private int segmentCount;
 
@@ -73,10 +76,10 @@ public class RepairScheduleStatus {
   }
 
   public RepairScheduleStatus(long id, String owner, String clusterName, String keyspaceName,
-      Collection<String> columnFamilies, RepairSchedule.State state,
-      DateTime creationTime, DateTime nextActivation,
-      DateTime pauseTime, double intensity, int segmentCount, RepairParallelism repairParallelism,
-      int daysBetween) {
+                              Collection<String> columnFamilies, RepairSchedule.State state,
+                              DateTime creationTime, DateTime nextActivation,
+                              DateTime pauseTime, double intensity, boolean incrementalRepair,  int segmentCount,
+                              RepairParallelism repairParallelism, int daysBetween) {
     this.id = id;
     this.owner = owner;
     this.clusterName = clusterName;
@@ -94,19 +97,20 @@ public class RepairScheduleStatus {
 
   public RepairScheduleStatus(RepairSchedule repairSchedule, RepairUnit repairUnit) {
     this(
-        repairSchedule.getId(),
-        repairSchedule.getOwner(),
-        repairUnit.getClusterName(),
-        repairUnit.getKeyspaceName(),
-        repairUnit.getColumnFamilies(),
-        repairSchedule.getState(),
-        repairSchedule.getCreationTime(),
-        repairSchedule.getNextActivation(),
-        repairSchedule.getPauseTime(),
-        repairSchedule.getIntensity(),
-        repairSchedule.getSegmentCount(),
-        repairSchedule.getRepairParallelism(),
-        repairSchedule.getDaysBetween()
+            repairSchedule.getId(),
+            repairSchedule.getOwner(),
+            repairUnit.getClusterName(),
+            repairUnit.getKeyspaceName(),
+            repairUnit.getColumnFamilies(),
+            repairSchedule.getState(),
+            repairSchedule.getCreationTime(),
+            repairSchedule.getNextActivation(),
+            repairSchedule.getPauseTime(),
+            repairSchedule.getIntensity(),
+            repairUnit.getIncrementalRepair(),
+            repairSchedule.getSegmentCount(),
+            repairSchedule.getRepairParallelism(),
+            repairSchedule.getDaysBetween()
     );
   }
 
@@ -188,6 +192,14 @@ public class RepairScheduleStatus {
 
   public void setIntensity(double intensity) {
     this.intensity = intensity;
+  }
+
+  public boolean getIncrementalRepair() {
+    return incrementalRepair;
+  }
+
+  public void setIncrementalRepair(boolean incrementalRepair) {
+    this.incrementalRepair = incrementalRepair;
   }
 
   public int getSegmentCount() {
