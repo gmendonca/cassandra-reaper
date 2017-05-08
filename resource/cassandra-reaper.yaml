@@ -3,10 +3,9 @@
 # src/test/resources/cassandra-reaper.yaml
 
 segmentCount: 200
-repairParallelism: DATACENTER_AWARE
+repairParallelism: PARALLEL
 repairIntensity: 0.9
 scheduleDaysBetween: 7
-daysToExpireAfterDone: 2
 repairRunThreadCount: 15
 hangingRepairTimeoutMins: 30
 storageType: memory
@@ -14,7 +13,7 @@ enableCrossOrigin: true
 incrementalRepair: false
 
 logging:
-  level: INFO
+  level: DEBUG
   loggers:
     io.dropwizard: INFO
     org.eclipse.jetty: INFO
